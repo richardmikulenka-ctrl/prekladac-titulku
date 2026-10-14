@@ -11,8 +11,8 @@ def process_srt(content):
     current_batch = []
     current_length = 0
     
-    # Použijeme MyMemory místo Googlu (zdarma, bez blokací IP)
-    translator = MyMemoryTranslator(source='en', target='cs')
+    # Opravené kódy jazyků pro MyMemory
+    translator = MyMemoryTranslator(source='en-US', target='cs-CZ')
     
     progress_bar = st.progress(0)
     
@@ -40,7 +40,7 @@ def process_srt(content):
         else:
             current_batch.append(line)
             current_length += len(line)
-            # MyMemory má rádo kratší dávky (do 400-500 znaků)
+            # MyMemory raději menší dávky
             if current_length > 400:
                 text_to_translate = "\n".join(current_batch)
                 try:
