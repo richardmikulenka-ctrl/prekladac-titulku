@@ -1,70 +1,33 @@
-import streamlit as st
-from deep_translator import GoogleTranslator
-import re
 import time
+from googletrans import Translator
+import pysrt
 
-st.set_page_config(page_title="SRT Překladač", page_icon="📝")
-
-def process_srt(content):
-    lines = content.splitlines()
-    final_output = []
-    current_batch = []
-    current_length = 0
-    translator = GoogleTranslator(source='auto', target='cs')
+def translate_srt_batched(file_path, output_path, batch_size=20, delay_seconds=1.0):
+    translator = Translator()
+    subs = pysrt.open(file_path)
     
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    # Rozdělíme na řádky, které chceme přeložit
-    text_lines_indices = [i for i, l in enumerate(lines) if not (re.match(r'^\d+$', l) or '-->' in l or not l.strip())]
-    total_to_translate = len(text_lines_indices)
-    translated_count = 0
-
-    for i, line in enumerate(lines):
-        if re.match(r'^\d+$', line) or '-->' in line or not line.strip():
-            if current_batch:
-                translated = translator.translate("\n".join(current_batch))
-                final_output.extend(translated.split('\n'))
-                translated_count += len(current_batch)
-                progress_bar.progress(min(translated_count / total_to_translate, 1.0))
-                current_batch = []
-                current_length = 0
-                time.sleep(0.8)  # <--- Přidána bezpečnostní prodleva
-            final_output.append(line)
-        else:
-            current_batch.append(line)
-            current_length += len(line)
-            # Posíláme větší bloky (cca 3000 znaků), aby to bylo efektivní
-            if current_length > 3000:
-                translated = translator.translate("\n".join(current_batch))
-                final_output.extend(translated.split('\n'))
-                translated_count += len(current_batch)
-                progress_bar.progress(min(translated_count / total_to_translate, 1.0))
-                current_batch = []
-                current_length = 0
-                time.sleep(0.8)  # <--- Přidána bezpečnostní prodleva
-    
-    if current_batch:
-        translated = translator.translate("\n".join(current_batch))
-        final_output.extend(translated.split('\n'))
-        progress_bar.progress(1.0)
+    # Rozdělíme titulky do dávkových skupin
+    for i in range(0, len(subs), batch_size):
+        batch = subs[i:i + batch_size]
         
-    return "\n".join(final_output)
-
-st.title("📝 SRT Překladač")
-uploaded_file = st.file_uploader("Vyber .srt soubor", type=["srt"])
-
-if uploaded_file is not None:
-    if st.button("Spustit bleskový překlad"):
+        # Spojíme texty z aktuální dávky oddělené řádkem
+        combined_text = "\n".join([sub.text for sub in batch])
+        
         try:
-            content = uploaded_file.getvalue().decode("utf-8")
-            result = process_srt(content)
-            st.success("Hotovo! Překlad dokončen.")
-            st.download_button(
-                label="📥 STÁHNOUT PŘELOŽENÝ SOUBOR",
-                data=result,
-                file_name=f"CZE_{uploaded_file.name}",
-                mime="text/plain"
-            )
+            # Přeložíme celý balík najednou
+            translated = translator.translate(combined_text, src='en', dest='cs')
+            translated_lines = translated.text.split("\n")
+            
+            # Zpětně přiřadíme přeložené řádky k titulkům
+            for j, sub in enumerate(batch):
+                if j < len(translated_lines):
+                    sub.text = translated_lines[j]
+                    
         except Exception as e:
-            st.error(f"Ajaj, něco se pokazilo: {e}")
+            print(f"Chyba při překladu dávky {i}: {e}")
+            
+        # Krátká pauza, aby si servery zchladily hlavy
+        time.sleep(delay_seconds)
+        
+    subs.save(output_path, encoding='utf-8')
+    print("Překlad dokončen!")
