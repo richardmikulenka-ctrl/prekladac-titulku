@@ -1,5 +1,5 @@
 import streamlit as st
-from deep_translator import GoogleTranslator
+from deep_translator import MyMemoryTranslator
 import re
 import time
 
@@ -10,10 +10,11 @@ def process_srt(content):
     final_output = []
     current_batch = []
     current_length = 0
-    translator = GoogleTranslator(source='auto', target='cs')
+    
+    # Použijeme MyMemory místo Googlu (zdarma, bez blokací IP)
+    translator = MyMemoryTranslator(source='en', target='cs')
     
     progress_bar = st.progress(0)
-    status_text = st.empty()
     
     # Rozdělíme na řádky, které chceme přeložit
     text_lines_indices = [i for i, l in enumerate(lines) if not (re.match(r'^\d+$', l) or '-->' in l or not l.strip())]
@@ -23,39 +24,53 @@ def process_srt(content):
     for i, line in enumerate(lines):
         if re.match(r'^\d+$', line) or '-->' in line or not line.strip():
             if current_batch:
-                translated = translator.translate("\n".join(current_batch))
+                text_to_translate = "\n".join(current_batch)
+                try:
+                    translated = translator.translate(text_to_translate)
+                except Exception:
+                    translated = text_to_translate  # Fallback při chybě
+                
                 final_output.extend(translated.split('\n'))
                 translated_count += len(current_batch)
                 progress_bar.progress(min(translated_count / total_to_translate, 1.0))
                 current_batch = []
                 current_length = 0
-                time.sleep(0.8)  # Bezpečnostní prodleva
+                time.sleep(0.5)
             final_output.append(line)
         else:
             current_batch.append(line)
             current_length += len(line)
-            # Posíláme větší bloky (cca 3000 znaků)
-            if current_length > 3000:
-                translated = translator.translate("\n".join(current_batch))
+            # MyMemory má rádo kratší dávky (do 400-500 znaků)
+            if current_length > 400:
+                text_to_translate = "\n".join(current_batch)
+                try:
+                    translated = translator.translate(text_to_translate)
+                except Exception:
+                    translated = text_to_translate
+                
                 final_output.extend(translated.split('\n'))
                 translated_count += len(current_batch)
                 progress_bar.progress(min(translated_count / total_to_translate, 1.0))
                 current_batch = []
                 current_length = 0
-                time.sleep(0.8)  # Bezpečnostní prodleva
+                time.sleep(0.5)
     
     if current_batch:
-        translated = translator.translate("\n".join(current_batch))
+        text_to_translate = "\n".join(current_batch)
+        try:
+            translated = translator.translate(text_to_translate)
+        except Exception:
+            translated = text_to_translate
         final_output.extend(translated.split('\n'))
         progress_bar.progress(1.0)
         
     return "\n".join(final_output)
 
-st.title("📝 SRT Překladač")
+st.title("📝 SRT Překladač (MyMemory)")
 uploaded_file = st.file_uploader("Vyber .srt soubor", type=["srt"])
 
 if uploaded_file is not None:
-    if st.button("Spustit bleskový překlad"):
+    if st.button("Spustit překlad"):
         try:
             content = uploaded_file.getvalue().decode("utf-8")
             result = process_srt(content)
